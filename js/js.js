@@ -85,3 +85,6 @@ console.log(localStorage.getItem("ui-theme")); // null
 console.log(localStorage.getItem("sidebar")); // null
 console.log(localStorage.getItem("notification-level"));
 
+const date = new Date();
+console.log("getFullYear(): ", date.getFullYear());
+console.log(date);
