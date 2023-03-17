@@ -1,90 +1,105 @@
-// const colorPalette = document.querySelector(".color-palette");
-// const output = document.querySelector(".output");
+// Import dependencies
+import './css/styles.css';
+import axios from 'axios';
+import { Notify } from 'notiflix/build/notiflix-notify-aio';
+import SimpleLightbox from "simplelightbox";
+import "simplelightbox/dist/simple-lightbox.min.css";
+import ImagesFetchService from '../src/fetchService';
+import 'intersection-observer';
 
-// colorPalette.addEventListener("click", selectColor);
+// Define constants
+const formEl = document.querySelector('#search-form');
+const loadMoreBtn = document.querySelector('.load-more');
+const galleryEl = document.querySelector('.gallery');
 
-// // This is where delegation «magic» happens
-// function selectColor(event) {
-//   if (event.target.nodeName !== "BUTTON") {
-//     return;
-//   }
+// Initialize objects
+const imagesFetchService = new ImagesFetchService();
+const io = new IntersectionObserver(onIntersection, { threshold: 1 });
 
-//   const selectedColor = event.target.dataset.color;
-//   output.textContent = `Selected color: ${selectedColor}`;
-//   output.style.color = selectedColor;
-// }
+// Add event listeners
+formEl.addEventListener('submit', onSubmit);
+loadMoreBtn.addEventListener('click', onLoadMore);
 
-// // Some helper functions to render palette items
-// createPaletteItems();
-
-// function createPaletteItems() {
-//   const items = [];
-//   for (let i = 0; i < 60; i++) {
-//     const color = getRandomColor();
-//     const item = document.createElement("button");
-//     item.type = "button";
-//     item.dataset.color = color;
-//     item.style.backgroundColor = color;
-//     item.classList.add("item");
-//     items.push(item);
-//   }
-//   colorPalette.append(...items);
-// }
-
-// function getRandomColor() {
-//   return `#${getRandomHex()}${getRandomHex()}${getRandomHex()}`;
-// }
-
-// function getRandomHex() {
-//   return Math.round(Math.random() * 256)
-// //     .toString(16)
-//     .padStart(2, "0");
-// }
-localStorage.setItem("ui-theme", "light");
-localStorage.setItem("sidebar", "expanded");
-localStorage.setItem("notification-level", "mute");
-console.log(localStorage.getItem("ui-theme")); // "light"
-console.log(localStorage.getItem("sidebar")); // "expanded"
-console.log(localStorage.getItem("notification-level")); // "mute"
-
-// localStorage.clear();
-console.log(localStorage.getItem("ui-theme")); // null
-console.log(localStorage.getItem("sidebar")); // null
-console.log(localStorage.getItem("notification-level"));
-
-// null
-
-
-
-
-const save = (key, value) => {
-  try {
-    const serializedState = JSON.stringify(value);
-    localStorage.setItem(key, serializedState);
-  } catch (error) {
-    console.error("Set state error: ", error.message);
+// Function definitions
+function onSubmit(event) {
+  event.preventDefault();
+  resetGallery();
+  const searchQuery = event.currentTarget.elements.searchQuery.value.trim();
+  if (searchQuery === '') {
+    return;
   }
-};
-
-const load = key => {
-  try {
-    const serializedState = localStorage.getItem(key);
-    return serializedState === null ? undefined : JSON.parse(serializedState);
-  } catch (error) {
-    console.error("Get state error: ", error.message);
-  }
-};
-
-const remove = key => {
-  localStorage.removeItem(key);
+  imagesFetchService.imagesForSearch = searchQuery;
+  imagesFetchService.fetchImages().then(renderImages);
+  formEl.reset();
 }
 
-remove("sidebar");
+function onIntersection([entry], observer) {
+  if (entry.isIntersecting) {
+    observer.unobserve(entry.target);
+    if (imagesFetchService.fetchedCards !== imagesFetchService.availableCards) {
+      onLoadMore();
+    }
+  }
+}
 
-console.log(localStorage.getItem("ui-theme")); // null
-console.log(localStorage.getItem("sidebar")); // null
-console.log(localStorage.getItem("notification-level"));
+function onLoadMore() {
+  imagesFetchService.fetchImages().then(renderImages);
+}
 
-const date = new Date();
-console.log("getFullYear(): ", date.getFullYear());
-console.log(date);
+function renderImages(images) {
+  const hits = images.data.hits;
+  if (hits.length === 0 && imagesFetchService.fetchedCards === 0) {
+    Notify.failure("Sorry, there are no images matching your search query. Please try again.");
+    return;
+  }
+  if (imagesFetchService.availableCards && imagesFetchService.currentPage === 1) {
+    Notify.success(`Hooray! We found ${imagesFetchService.availableCards} images.`);
+  }
+  hits.forEach(hit => {
+    const imgEl = document.createElement('img');
+    imgEl.classList.add('gallery__item');
+    imgEl.src = hit.webformatURL;
+    imgEl.alt = hit.tags;
+    galleryEl.appendChild(imgEl);
+  });
+  imagesFetchService.fetchedCards += hits.length;
+  if (imagesFetchService.fetchedCards === imagesFetchService.availableCards) {
+    Notify.info("We're sorry, but you've reached the end of search results.");
+    hideLoadMoreBtn();
+  } else {
+    observeLastImgEl();
+    showLoadMoreBtn();
+  }
+  initSimpleLightbox();
+}
+
+function observeLastImgEl() {
+  const lastImgEl = galleryEl.lastElementChild;
+  if (lastImgEl) {
+    io.observe(lastImgEl);
+  }
+}
+
+function initSimpleLightbox() {
+  const imgEls = document.querySelectorAll('.gallery__item');
+  if (imgEls.length > 0) {
+    const lightbox = new SimpleLightbox('.gallery__item');
+    lightbox.refresh();
+  }
+}
+
+function hideLoadMoreBtn() {
+  loadMoreBtn.classList.add('is-hidden');
+}
+
+function showLoadMoreBtn() {
+  loadMoreBtn.classList.remove('is-hidden');
+}
+
+function resetGallery() {
+  galleryEl.innerHTML = '';
+  imagesFetchService.currentPage = 0;
+  imagesFetchService.fetchedCards = 0;
+  imagesFetchService.availableCards = 0;
+  hideLoadMoreBtn();
+}
